@@ -26,5 +26,8 @@
     <ClInclude Include="network_client.h">
       <Filter>Файлы заголовков</Filter>
     </ClInclude>
+    <ClInclude Include="user.h">
+      <Filter>Файлы заголовков</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

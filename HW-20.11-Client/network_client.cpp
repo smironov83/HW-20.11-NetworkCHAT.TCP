@@ -15,7 +15,7 @@ NetworkClient::NetworkClient()
 //Закрывает сокет подключения к серверу. Очищает WSADATA.
 NetworkClient::~NetworkClient()
 {
-  closesocket(connectSocket_);
+  CLOSE(connectSock_);
 #if OS_WIND_COMPATIBLE
   WSACleanup();
 #endif
@@ -27,77 +27,96 @@ auto NetworkClient::Connect(void) -> size_t
 #if OS_WIND_COMPATIBLE
   if (iResult_ != 0)
   {
-    std::cout << "!!!WSAStartup завершился с ошибкой: " << iResult_;
+    std::cout << "!!!WSAStartup завершился с ошибкой: " << iResult_ 
+      << std::endl;
     return 1;
   }
 #endif
   //Создает сокет для подключению к серверу.
-  connectSocket_ = socket(AF_INET, SOCK_STREAM, 0);
-  if (connectSocket_ == INVALID_SOCKET)
+  connectSock_ = socket(2, 1, 0);
+  if (connectSock_ == -1)
   {
-    std::cout << "!!!socket завершился с ошибкой: " << WSAGetLastError();
+    std::cout << "!!!создание socket завершился с ошибкой!!!" << std::endl;
     return 1;
   }
   //Подключается к серверу.
   connectAddr_.sin_addr.s_addr = inet_addr("127.0.0.1");
   connectAddr_.sin_family = AF_INET;
   connectAddr_.sin_port = htons(DEFAULT_PORT);
-  iResult_ = connect(connectSocket_, (SOCKADDR *) &connectAddr_, 
+  iResult_ = connect(connectSock_, (struct sockaddr *) &connectAddr_, 
     sizeof(connectAddr_));
-  if (iResult_ == SOCKET_ERROR)
-    connectSocket_ = INVALID_SOCKET;
-  if (connectSocket_ == INVALID_SOCKET)
+  if (iResult_ == -1)
+    connectSock_ = -1;
+  if (connectSock_ == -1)
   {
-    std::cout << "Невозможно подключиться к серверу!!!" << std::endl;
+    std::cout << "!!!невозможно подключиться к серверу!!!" << std::endl;
     return 1;
   }
   return 0;
 }
 
 //Принимает данные.
-auto NetworkClient::Recv(void)->size_t
+auto NetworkClient::Read(void)->size_t
 {
-  iResult_ = recv(connectSocket_, recvbuf_, sizeof(recvbuf_), 0);
-  if (iResult_ > 0)
-    std::cout << "Server: " << recvbuf_ << std::endl;
+  iResult_ = READ(connectSock_, recvbuf_, sizeof(recvbuf_) FLAG);
+  std::string str;
+  if (iResult_ <= 0)
+  {
+    std::cout << "!!!recv завершился с ошибкой!!!" << std::endl;
+    return 1;
+  }
   else
   {
-    std::cout << "!!!recv завершился с ошибкой: " << WSAGetLastError();
-    return 1;
+    str = CONVERT_OUT(std::string(recvbuf_));
+    if (str == "exit")
+    {
+      std::cout << "Соединение завершено..." << std::endl;
+      return 1;
+    }
   }
-  if (strcmp(recvbuf_, "exit") == 0)
-  {
-    std::cout << "Соединение завершено..." << std::endl;
-    return 1;
-  }
+  history_.push_back(str);
+  std::cout << str << std::endl;
   memset(recvbuf_, 0, sizeof(recvbuf_));
   return 0;
 }
 
 //Отправляет данные.
-auto NetworkClient::Send(void) -> size_t
+auto NetworkClient::Write(void) -> size_t
 {
-  std::cout << "Client: ";
-  std::cin >> recvbuf_;
-  iResult_ = send(connectSocket_, recvbuf_, sizeof(recvbuf_), 0);
-  if (iResult_ == SOCKET_ERROR)
+  std::cout << name_ << ": ";
+  std::string str;
+  std::getline(std::cin, str);
+  if (str != "exit")
+    str = MessageConstructor(str);
+  history_.push_back(str);
+  str = CONVERT_IN(str);
+#if OS_WIND_COMPATIBLE
+  strcpy_s(recvbuf_, str.c_str());
+#else
+  strcpy(recvbuf_, str.c_str());
+#endif
+  iResult_ = WRITE(connectSock_, recvbuf_, sizeof(recvbuf_) FLAG);
+  if (iResult_ <= 0)
   {
-    std::cout << "!!!send завершился с ошибкой: " << WSAGetLastError();
+    std::cout << "!!!send завершился с ошибкой!!!";
     return 1;
   }
-  if (strcmp(recvbuf_, "exit") == 0)
-    return 1;
   memset(recvbuf_, 0, sizeof(recvbuf_));
+  if (str == "exit")
+    return 1;
+  SCREEN_CLEAR;
+  for (auto &hist : history_)
+    std::cout << hist << std::endl;
   return 0;
 }
 
 //Отключает клиента.
 auto NetworkClient::Shutdown(void) -> size_t
 {
-  iResult_ = shutdown(connectSocket_, SD_SEND);
-  if (iResult_ == SOCKET_ERROR)
+  iResult_ = shutdown(connectSock_, 0x01);
+  if (iResult_ == -1)
   {
-    std::cout << "!!!shutdown завершился с ошибкой: " << WSAGetLastError();
+    std::cout << "!!!shutdown завершился с ошибкой!!!" << std::endl;
     return 1;
   }
   return 0;
